@@ -1,8 +1,11 @@
+# Ariel Bar Kalifa 214181604
+# Yedidia Marashe 213661499
+
 from scapy.all import *
 import argparse
 import time
 
-#example usage:
+# example usage:
 # sudo python3 ArpSpoofer.py -i eth0 -t 10.0.0.1 -d 5 -gw
 
 ARP_ISAT_CODE = 2
