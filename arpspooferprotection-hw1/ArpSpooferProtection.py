@@ -13,13 +13,16 @@ class ArpSpoofDetectSession(DefaultSession):
         - get ARP table and look to see duplicate entries with different IPs
         - DIDI THINK OF SOMETHING
         """
-        
+        # INDICATOR 1: Host machine of is_at pkt not responding to ping req.
         if pkt[ARP].op == ARPisat:
             ping_pkt = Ether(dst=pkt[ARP].hwsrc)/IP(dst=pkt[ARP].psrc)/ICMP()
             res = srp1(ping_pkt, timeout=1)
             if not res:
                 indicators.append("host not replying to ping")
                 return
+
+        # INDICATOR 2: Arp table contains duplicate MACs for different IPs
+        # INDICATOR 3: DIDI YA SHARMIT
 
 sniff(lfilter= lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src),session=ArpSpoofDetectSession, stop_filter=lambda x: len(indicators) >= 2)
 if len(indicators) >= 2:
