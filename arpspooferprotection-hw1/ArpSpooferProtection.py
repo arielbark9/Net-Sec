@@ -38,22 +38,28 @@ def arp_table_contains_duplicates():
     """
     if platform.system() == "Linux":
         arp_table = open("/proc/net/arp", "r").read()
-    elif platform.system() in ["Darwin", "Windows"]:
+        arp_table = arp_table.split('\n')
+        mac_addresses = []
+        for arp_line in arp_table:
+            if arp_line == '':
+                continue
+            arp_line = arp_line.split(" ")
+            if re.match(mac_address_regex, arp_line[25]):
+                mac_addresses.append(arp_line[25])
+
+        if len(mac_addresses) != len(set(mac_addresses)):
+            return True
+
+    elif platform.system() == "Windows":
         arp_table = os.popen("arp -a").read()
-
-    arp_table = arp_table.split('\n')
-    mac_addresses = []
-    for arp_line in arp_table:
-        if arp_line == '':
-            continue
-        arp_line = arp_line.split(" ")
-        if re.match(mac_address_regex, arp_line[25]):
-            mac_addresses.append(arp_line[25])
-
-    if len(mac_addresses) != len(set(mac_addresses)):
-        return True
+        arp_table = arp_table.split("Interface")
+        for iface in arp_table:
+            mac_addresses = [line for line in re.findall('([-0-9a-f]{17})', iface) if line != "ff-ff-ff-ff-ff-ff"]
+            if len(mac_addresses) != len(set(mac_addresses)):
+                return True
 
     return False
+
 
 
 def responds_to_ping_request(pkt):
@@ -105,7 +111,7 @@ class ArpSpoofDetectSession(DefaultSession):
 
 def main():
     print_state()
-    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src and pkt[ARP].op == ARPisat),
+    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src), #and pkt[ARP].op == ARPisat),
           session=ArpSpoofDetectSession)
 
 
