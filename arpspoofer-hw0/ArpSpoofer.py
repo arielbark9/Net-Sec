@@ -1,5 +1,5 @@
 # Ariel Bar Kalifa 214181604
-# Yedidia Marashe 213661499
+# Yedidya Marashe 213661499
 
 from scapy.all import *
 import argparse
