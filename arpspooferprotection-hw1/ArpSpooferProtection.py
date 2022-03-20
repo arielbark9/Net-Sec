@@ -43,9 +43,9 @@ def arp_table_contains_duplicates():
         for arp_line in arp_table:
             if arp_line == '':
                 continue
-            arp_line = arp_line.split(" ")
-            if re.match(mac_address_regex, arp_line[25]):
-                mac_addresses.append(arp_line[25])
+            arp_line = arp_line.split()
+            if re.match(mac_address_regex, arp_line[3]):
+                mac_addresses.append(arp_line[3])
 
         if len(mac_addresses) != len(set(mac_addresses)):
             return True
