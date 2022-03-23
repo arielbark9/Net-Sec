@@ -1,7 +1,11 @@
+# Ariel Bar Kalifa 214181604
+# Yedidya Marashe 213661499
+
 from scapy.all import *
 import re
 from scapy.layers.l2 import Ether, ARP
 from termcolor import colored
+import platform
 
 mac_address_regex = re.compile(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})')
 broadcast_mac_address = 'ff:ff:ff:ff:ff:ff'
@@ -35,20 +39,30 @@ def arp_table_contains_duplicates():
     """
     - get ARP table and look for duplicate MAC entries with different IPs
     """
-    arp_table = open("/proc/net/arp", "r").read()
-    arp_table = arp_table.split('\n')
-    mac_addresses = []
-    for arp_line in arp_table:
-        if arp_line == '':
-            continue
-        arp_line = arp_line.split(" ")
-        if re.match(mac_address_regex, arp_line[25]):
-            mac_addresses.append(arp_line[25])
+    if platform.system() == "Linux":
+        arp_table = open("/proc/net/arp", "r").read()
+        arp_table = arp_table.split('\n')
+        mac_addresses = []
+        for arp_line in arp_table:
+            if arp_line == '':
+                continue
+            arp_line = arp_line.split()
+            if re.match(mac_address_regex, arp_line[3]):
+                mac_addresses.append(arp_line[3])
 
-    if len(mac_addresses) != len(set(mac_addresses)):
-        return True
+        if len(mac_addresses) != len(set(mac_addresses)):
+            return True
+
+    elif platform.system() == "Windows":
+        arp_table = os.popen("arp -a").read()
+        arp_table = arp_table.split("Interface")
+        for iface in arp_table:
+            mac_addresses = [line for line in re.findall('([-0-9a-f]{17})', iface) if line != "ff-ff-ff-ff-ff-ff"]
+            if len(mac_addresses) != len(set(mac_addresses)):
+                return True
 
     return False
+
 
 
 def responds_to_ping_request(pkt):
@@ -65,7 +79,11 @@ def responds_to_ping_request(pkt):
 
 
 def print_state():
-    os.system("clear")
+    if platform.system() in ["Linux", "Darwin"]:
+        os.system("clear")
+    elif platform.system() == "Windows":
+        os.system("cls")
+
     print("The Following indicators are being reported:\n"
           f"Host of Arp is_at packet not responding to a Ping request:  {colored(indicators['I1'], 'red')}\n"
           f"Receiving multiple responses per one Arp who_has request:   {colored(indicators['I2'], 'red')}\n"
@@ -96,7 +114,7 @@ class ArpSpoofDetectSession(DefaultSession):
 
 def main():
     print_state()
-    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src),
+    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src), #and pkt[ARP].op == ARPisat),
           session=ArpSpoofDetectSession)
 
 
