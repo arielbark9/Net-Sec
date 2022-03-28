@@ -114,7 +114,7 @@ class ArpSpoofDetectSession(DefaultSession):
 
 def main():
     print_state()
-    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src), #and pkt[ARP].op == ARPisat),
+    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src),
           session=ArpSpoofDetectSession)
 
 

