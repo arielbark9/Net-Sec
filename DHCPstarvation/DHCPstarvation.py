@@ -2,6 +2,7 @@
 # Yedidya Marashe 213661499
 
 import argparse
+import random
 import time
 from itertools import count
 from multiprocessing import Process
@@ -63,20 +64,21 @@ def get_ip_address(mac, args) -> (str, str):
     target = "255.255.255.255"
     if args.target:
         target = args.target
+    xid = random.randint(0, 30000)
     # craft dhcp discover packet
     dhcp_discover = Ether(dst="ff:ff:ff:ff:ff:ff", src=mac) / IP(src="0.0.0.0", dst=target) / UDP(sport=68, dport=67) / BOOTP(
-        op=1, chaddr=mac) / DHCP(options=[("message-type", "discover"), ("end")])
+        op=1, chaddr=mac, xid=xid) / DHCP(options=[("message-type", "discover"), ("end")])
 
     # send the dhcp discover packet
-    offer = srp1(dhcp_discover, iface=args.iface, timeout=0.5, verbose=0)
+    offer = srp1(dhcp_discover, iface=args.iface, timeout=1, verbose=1)
     print(offer.show())
     if offer:
         # craft dhcp request packet
         dhcp_request = Ether(dst=offer.src, src=mac) / IP(src="0.0.0.0", dst=args.target) / UDP(sport=68, dport=67) / BOOTP(
-            op=1, chaddr=mac) / DHCP(options=[("message-type", "request"), ("requested_addr", offer.getlayer(BOOTP).yiaddr),
+            op=1, chaddr=mac, xid=xid) / DHCP(options=[("message-type", "request"), ("requested_addr", offer.getlayer(BOOTP).yiaddr),
                                                          ("server_id", offer.getlayer(BOOTP).siaddr), ("end")])
 
-        ack = srp1(dhcp_request, iface=args.iface, timeout=0.5, verbose=0)
+        ack = srp1(dhcp_request, iface=args.iface, timeout=1, verbose=0)
         if ack:
             # return the ip address and the lease time
             return offer.getlayer(BOOTP).yiaddr, offer.getlayer(BOOTP).options[-1][1]
@@ -98,7 +100,7 @@ def renew(lease_time, ip, mac, args):
     dhcp_renew = Ether(dst=mac, src=mac) / IP(src=ip, dst=target) / UDP(sport=68, dport=67) / BOOTP(op=1, chaddr=mac) / DHCP(
         options=[("message-type", "request"), ("requested_addr", ip), ("end")])
     # send the dhcp renewal packet
-    ack = srp1(dhcp_renew, iface=args.iface, timeout=0.5, verbose=0)
+    ack = srp1(dhcp_renew, iface=args.iface, timeout=1, verbose=0)
     if ack:
         print("Renewed IP: " + ip)
 
