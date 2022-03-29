@@ -2,15 +2,13 @@
 # Yedidya Marashe 213661499
 
 import argparse
-import random
-import time
-from itertools import count
 from multiprocessing import Process
-
 from scapy.all import *
+from scapy.layers.dhcp import DHCP, BOOTP
+from scapy.layers.inet import UDP, IP
+from scapy.layers.l2 import Ether
 
 IP_REGEX = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
-count = 0
 
 # set seed
 random.seed(time.time())
@@ -109,7 +107,7 @@ def renew_and_maintain(lease_time, ip, mac, args):
     :param args:
     :return:
     """
-    time.sleep(30)
+    time.sleep(5)
     target = "255.255.255.255"
     if args.target:
         target = args.target
