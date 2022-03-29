@@ -107,7 +107,7 @@ def renew_and_maintain(lease_time, ip, mac, args):
     :param args:
     :return:
     """
-    time.sleep(5)
+    time.sleep(lease_time*(2/3))
     target = "255.255.255.255"
     if args.target:
         target = args.target
