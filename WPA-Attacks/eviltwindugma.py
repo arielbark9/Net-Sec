@@ -52,7 +52,7 @@ def startDHCP():
 # set the iptable to enable network forwarding to the new AP
 ########################################
 def iptableConf():
-    os.system("iptables --table nat --append POSTROUTING --out-interface etho --j MASQUERADE")
+    os.system("iptables --table nat --append POSTROUTING --out-interface eth0 --j MASQUERADE")
     # os.system("iptables --append FORWARD --match string --algo kmp --hex-string '|c0 a8 01 5a|' --jump DROP")
     os.system("iptables --append FORWARD --in-interface wlan0mon --j ACCEPT")
     os.system("iptables -t nat -A PREROUTING -p tcp --dport 80 -j NETMAP --to 192.168.1.1")
