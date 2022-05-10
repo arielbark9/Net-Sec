@@ -1,15 +1,18 @@
-<com>write a simple form for username and password</com>
+
 <html>
     <head>
         <title>Login</title>
+        <link rel="stylesheet" href="style.css">
     </head>
     <body>
-        <form action="login.php" method="post">
-            <label>Password:</label>
-            <input type="text" name="password" />
-            <label>Password verify:</label>
-            <input type="password" name="password1" />
-            <input type="submit" value="Login" />
-        </form>
+        <div class="login-page">
+          <div class="form">
+            <form class="login-form" action="login.php" method="post">
+              <input type="password" placeholder="password" name="password"/>
+              <input type="password" placeholder="verify" name="verify"/>
+              <button>login</button>
+            </form>
+          </div>
+        </div>
     </body>
 </html>

