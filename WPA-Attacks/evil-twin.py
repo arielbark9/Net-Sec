@@ -93,7 +93,7 @@ class EvilTwin:
         #  scan for nearby access points for 60 seconds
         channel_changer = Thread(target=change_channel, args=(self.interface,))
         channel_changer.start()
-        sniff(prn=callback_ap, iface=self.interface, timeout=20)
+        sniff(prn=callback_ap, iface=self.interface, timeout=60)
         global done_scanning
         done_scanning = True
 
